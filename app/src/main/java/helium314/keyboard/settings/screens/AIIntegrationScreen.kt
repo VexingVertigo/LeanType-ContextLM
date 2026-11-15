@@ -110,6 +110,7 @@ private fun OfflineAIIntegrationScreen(onClickBack: () -> Unit) {
     SearchSettingsScreen(
         onClickBack = onClickBack,
         title = stringResource(R.string.load_offline_ai_plugin),
-        settings = items
+        settings = items,
+        headerContent = { helium314.keyboard.contextlm.ContextLmSettingsSection() }
     )
 }

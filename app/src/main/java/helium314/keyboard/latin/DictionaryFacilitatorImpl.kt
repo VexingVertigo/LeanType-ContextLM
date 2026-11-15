@@ -475,7 +475,9 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         // We demote unrecognized words (frequency <= 0) by specifying them as "invalid".
         // We don't add words with 0-frequency (assuming they would be profanity etc.).
         val isValid = mainFreq > 0
-        UserHistoryDictionary.addToDictionary(userHistoryDictionary, ngramContext, wordToUse, isValid, timeStampInSeconds)
+        val guardedWord = helium314.keyboard.contextlm.DictionaryHygieneGuard.normalizeForHistory(wordToUse) { lower -> dictionaryGroup.getDict(Dictionary.TYPE_MAIN)?.isValidWord(lower) == true }
+        if (guardedWord != wordToUse && isValidWord(guardedWord, DictionaryFacilitator.ALL_DICTIONARY_TYPES, dictionaryGroup)) return
+        UserHistoryDictionary.addToDictionary(userHistoryDictionary, ngramContext, guardedWord, isValid, timeStampInSeconds)
     }
 
     private val DICTIONARY_TYPES_EXCLUDING_HISTORY = arrayOf(

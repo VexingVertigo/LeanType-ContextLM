@@ -225,8 +225,10 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             }
         }
         val isTypedWordValid = firstOccurrenceOfTypedWordInSuggestions > -1 || (!resultsArePredictions && !allowsToBeAutoCorrected)
-        return SuggestedWords(suggestionsList, suggestionResults.mRawSuggestions,
+        val baseSuggestions = SuggestedWords(suggestionsList, suggestionResults.mRawSuggestions,
             typedWordInfo, isTypedWordValid, hasAutoCorrection, false, inputStyle, sequenceNumber)
+        val neural = if (ime != null) helium314.keyboard.contextlm.ContextLmFacilitator.getContextualSuggestions(ime, wordComposer, ngramContext, keyboard, sequenceNumber, mAutoCorrectionThreshold) else null
+        return helium314.keyboard.contextlm.ContextLmFacilitator.mergeSuggestions(baseSuggestions, neural)
     }
 
     // returns [allowsToBeAutoCorrected, hasAutoCorrection]

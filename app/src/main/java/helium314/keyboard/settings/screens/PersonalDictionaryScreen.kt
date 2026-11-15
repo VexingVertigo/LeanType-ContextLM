@@ -74,6 +74,9 @@ fun PersonalDictionaryScreen(
     var selectedWord: Word? by remember { mutableStateOf(null) }
     var showClearAllDialog by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
+    var showAiCleanDialog by remember { mutableStateOf(false) }
+    var aiCleanProposals by remember { mutableStateOf<List<helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanupProposal>>(emptyList()) }
+    var aiCleanError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) {
@@ -113,6 +116,7 @@ fun PersonalDictionaryScreen(
                     exportLauncher.launch("dictionary_$tag.txt")
                 },
                 stringResource(R.string.user_dict_sort_title) to { showSortDialog = true },
+                "AI Clean Dictionary" to { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch { when (val res = helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.auditDictionary(ctx, locale)) { is helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.AuditResult.Ready -> { aiCleanProposals = res.proposals; aiCleanError = null; showAiCleanDialog = true }; is helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.AuditResult.Error -> { aiCleanError = res.message; showAiCleanDialog = true } } } },
                 stringResource(R.string.clear_all) to { showClearAllDialog = true }
             ),
             headerContent = {
@@ -225,6 +229,7 @@ fun PersonalDictionaryScreen(
             content = { Text(stringResource(R.string.user_dict_clear_all_confirmation)) }
         )
     }
+    if (showAiCleanDialog) { ConfirmationDialog(onDismissRequest = { showAiCleanDialog = false }, onConfirmed = { showAiCleanDialog = false; val toApply = aiCleanProposals; if (toApply.isNotEmpty()) { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch { helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.applyProposals(ctx, toApply); refreshTrigger++ } } }, content = { val err = aiCleanError; if (err != null) Text(err) else if (aiCleanProposals.isEmpty()) Text("No typos or unnecessary capitalizations found.") else Column { Text("Apply ${aiCleanProposals.size} cleanup changes?"); aiCleanProposals.take(15).forEach { p -> Text(if (p.action == helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanAction.DELETE) "DELETE: ${p.entry.word} (${p.reason})" else "LOWERCASE: ${p.entry.word} -> ${p.newWord}") } } }) }
 }
 
 
