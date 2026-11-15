@@ -100,3 +100,5 @@ CLAUDE.local.md
 .codex/
 .kiro/
 .github/copilot-instructions.md
+
+local.properties
