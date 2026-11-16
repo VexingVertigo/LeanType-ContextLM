@@ -1,3 +1,28 @@
+# 🚀 LeanType Custom AI Fork (ContextLM + Smart Cleaner)
+
+This is a custom, unofficial fork of [LeanBitLab/LeanType](https://github.com/LeanBitLab/LeanType). It includes experimental on-device AI features that run 100% offline.
+
+### ✨ Custom Features Added:
+* **🧠 FUTO ContextLM Integration:** Ported FUTO's C++ Transformer (`ml4_q6_k.gguf`) for sentence-aware next-word predictions and context-based autocorrect.
+* **🧹 Smart AI Dictionary Cleaner:** Added an "AI Clean Dictionary" action to your Personal Dictionary. It uses an offline LLM (like Llama-3.2-3B) to intelligently find typos and fix weird capitalizations without relying on hardcoded word lists.
+* **✨ AI Proofreading:** Standard offline grammar and spelling correction via the official AI plugin.
+
+### 📥 Download & Install
+You can download the ready-to-install APK from the [Releases](https://github.com/VexingVertigo/LeanType-ContextLM/releases) page. 
+*Note: This is a Debug build (`com.leanbitlab.leantype.offline.debug`). It will install alongside your official LeanType app.*
+
+### ⚙️ How to use the AI features
+1. Go to **Settings > AI Integration**.
+2. Download and load the **LeanType-Offline-AI-Plugin**.
+3. **For the Cleaner:** Load your favorite instruct `.gguf` model (e.g., Llama-3.2-3B).
+4. **For ContextLM:** Toggle "Contextual Transformer Prediction" and select FUTO's `ml4_q6_k.gguf` model.
+
+---
+
+*(The original LeanType README continues below)*
+
+
+
 # LeanType
 
 <picture>
