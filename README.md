@@ -1,5 +1,9 @@
 # 🚀 LeanType Custom AI Fork (ContextLM + Smart Cleaner)
 
+<a href="https://ko-fi.com/vexingvertigo" target="_blank">
+  <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="30" />
+</a>
+
 This is a custom, unofficial fork of [LeanBitLab/LeanType](https://github.com/LeanBitLab/LeanType). It includes experimental on-device AI features that run 100% offline.
 
 ### ✨ Custom Features Added:
