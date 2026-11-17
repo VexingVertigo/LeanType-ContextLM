@@ -1,31 +1,58 @@
-# 🚀 LeanType Custom AI Fork (ContextLM + Smart Cleaner)
+# 🧠 LeanType ContextLM — Offline AI & Power-User Fork
 
-<a href="https://ko-fi.com/vexingvertigo" target="_blank">
-  <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="30" />
-</a>
+<div align="center">
 
-This is a custom, unofficial fork of [LeanBitLab/LeanType](https://github.com/LeanBitLab/LeanType). It includes experimental on-device AI features that run 100% offline.
+[![GitHub Release](https://img.shields.io/github/v/release/VexingVertigo/LeanType-ContextLM?style=flat-square&color=4f46e5&label=Latest%20Release)](https://github.com/VexingVertigo/LeanType-ContextLM/releases/latest)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
+[![Sponsor on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20This%20Fork-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/vexingvertigo)
 
-### ✨ Custom Features Added:
-* **🧠 FUTO ContextLM Integration:** Ported FUTO's C++ Transformer (`ml4_q6_k.gguf`) for sentence-aware next-word predictions and context-based autocorrect.
-* **🧹 Smart AI Dictionary Cleaner:** Added an "AI Clean Dictionary" action to your Personal Dictionary. It uses an offline LLM (like Llama-3.2-3B) to intelligently find typos and fix weird capitalizations without relying on hardcoded word lists.
-* **✨ AI Proofreading:** Standard offline grammar and spelling correction via the official AI plugin.
+**A daily-driver fork of [LeanBitLab/LeanType](https://github.com/LeanBitLab/LeanType) supercharged with FUTO's ContextLM Transformer, an interactive AI Personal Dictionary Cleaner, and One UI 9 / Android 17 fixes.**  
+*100% offline. Zero telemetry. Built for local GGUF power users.*
 
-### 📥 Download & Install
-You can download the ready-to-install APK from the [Releases](https://github.com/VexingVertigo/LeanType-ContextLM/releases) page. 
-*Note: This is a Debug build (`com.leanbitlab.leantype.offline.debug`). It will install alongside your official LeanType app.*
+[Download APK](https://github.com/VexingVertigo/LeanType-ContextLM/releases/latest) • [Add to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/VexingVertigo/LeanType-ContextLM) • [What's Different](#-whats-different-in-this-fork) • [Setup Guide](#-quick-setup-guide)
 
-### ⚙️ How to use the AI features
-1. Go to **Settings > AI Integration**.
-2. Download and load the **LeanType-Offline-AI-Plugin**.
-3. **For the Cleaner:** Load your favorite instruct `.gguf` model (e.g., Llama-3.2-3B).
-4. **For ContextLM:** Toggle "Contextual Transformer Prediction" and select FUTO's `ml4_q6_k.gguf` model.
+</div>
 
 ---
 
-*(The original LeanType README continues below)*
+## ✨ What's Different in This Fork?
 
+| Feature | Upstream LeanType | LeanType ContextLM (This Fork) |
+| :--- | :---: | :---: |
+| **FUTO ContextLM Transformer (`ml4_q6_k.gguf`)** | ❌ | ✅ Sentence-aware next-word prediction & context autocorrect |
+| **Interactive AI Dictionary Cleaner** | ❌ | ✅ Batch LLM audit with live progress, proper-noun protection, capitalization fixes & per-word checkboxes |
+| **Strict Inline AI Rewriter Keys** | Standard | ✅ Rewrites text directly in-place without conversational chatbot fluff |
+| **Clipboard, Selection & Media Reliability** | Standard | ✅ Auto-prompts for photo permissions, captures One UI 9 / Android 17 screenshots, and prevents Copy from collapsing selections |
 
+### 🔍 Feature Breakdown
+- **🧠 FUTO ContextLM Integration:** Ported FUTO's C++ Transformer (`ml4_q6_k.gguf`) for deep, sentence-aware next-word predictions and context-based autocorrect directly on-device.
+- **🧹 Interactive AI Dictionary Cleaner:** Audits your Personal Dictionary in batches using an offline instruct GGUF model (such as `Llama-3.2-3B-Instruct`). Automatically protects proper names, emails, contractions, and acronyms while letting you review and toggle individual `DELETE`, `LOWERCASE`, or `CAPITALIZE` suggestions via checkboxes before applying.
+- **✍️ Strict In-Place AI Rewriting:** Tuned system prompts ensure custom toolbar keys (like Casual / Professional rewriters) edit your selected text cleanly without outputting conversational filler.
+- **📋 Clipboard & Selection Fixes:** Prevents toolbar Copy from collapsing highlighted text on Chromium and One UI fields, automatically prompts for photo access when enabling Clipboard History, and reliably captures pending screenshots into the clipboard tray.
+
+---
+
+## 📥 Download & Install
+
+1. **Direct APK Download:** Grab **`2-LeanType_4.3.4-offline-release.apk`** from the **[Releases Page](https://github.com/VexingVertigo/LeanType-ContextLM/releases/latest)**. *(Production-signed `com.leanbitlab.leantype.offline` release build).*
+2. **Auto-Updates via Obtainium:**
+   - **On Android:** Tap **[One-Click Add to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/VexingVertigo/LeanType-ContextLM)** to track releases automatically.
+   - **On PC / Manual Setup:** Open Obtainium on your phone → tap **Add App** → paste `https://github.com/VexingVertigo/LeanType-ContextLM` → tap **Add**.
+
+---
+
+## ⚙️ Quick Setup Guide
+
+1. Install and enable **LeanType** in Android System Settings.
+2. Download and install the [LeanType Offline AI Plugin APK](https://github.com/LeanBitLab/LeanType-Offline-AI-Plugin/releases/latest), then load it in **LeanType Settings → Plugins & Capabilities → Offline AI**.
+3. **For AI Dictionary Cleaner & Rewriting:** Load a local instruct `.gguf` model (e.g., `Llama-3.2-3B-Instruct-Q4_K_M.gguf`) under **Settings → Advanced → GGUF Model (.gguf)**.
+4. **For ContextLM Predictions:** Enable **Contextual Transformer Prediction** and select FUTO's `ml4_q6_k.gguf` model.
+
+---
+
+<details>
+<summary><b>📖 Click to expand the original upstream LeanType documentation</b></summary>
+<br>
 
 # LeanType
 
@@ -316,3 +343,5 @@ If LeanType improves your daily typing workflow, please consider sponsoring our 
 
 LeanType is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.  
 See the [LICENSE](LICENSE) file for details.
+
+</details>
