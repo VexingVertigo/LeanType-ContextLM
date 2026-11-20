@@ -2190,6 +2190,7 @@ class LatinIME : InputMethodService(),
     @Suppress("DEPRECATION")
     private fun setNavigationBarColor() {
         val window = window?.window ?: return
+        if (!window.decorView.isAttachedToWindow) return
         if (!originalNavBarSaved && window.navigationBarColor != Color.TRANSPARENT) {
             originalNavBarColor = window.navigationBarColor
             originalNavBarFlags = window.decorView.systemUiVisibility

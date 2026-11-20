@@ -1,30 +1,31 @@
 package helium314.keyboard.contextlm
 
 import android.content.Context
+import android.provider.UserDictionary
 import android.util.Log
 import helium314.keyboard.keyboard.Keyboard
+import helium314.keyboard.latin.DictionaryFacilitator
 import helium314.keyboard.latin.NgramContext
 import helium314.keyboard.latin.SuggestedWords
 import helium314.keyboard.latin.SuggestedWords.SuggestedWordInfo
 import helium314.keyboard.latin.WordComposer
 import helium314.keyboard.latin.common.ComposedData
 import helium314.keyboard.latin.dictionary.Dictionary
+import java.util.Locale
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Orchestrates off-UI-thread contextual Transformer predictions with sequence-based
- * cancellation and a strict <40ms latency budget, merging neural candidates into
- * LeanType's SuggestedWords without blocking keystrokes.
- */
 object ContextLmFacilitator {
     private const val TAG = "ContextLmFacilitator"
-    private const val INFERENCE_TIMEOUT_MS = 38L
+    private const val INFERENCE_TIMEOUT_MS = 140L
+    private const val BUSY_INFERENCE_TIMEOUT_MS = 210L
     private const val BASE_NEURAL_SCORE = 1_500_000
+    private const val PERSONAL_DICT_REFRESH_MS = 30_000L
 
     private val lmExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "LeanType-ContextLM").apply {
@@ -34,15 +35,17 @@ object ContextLmFacilitator {
     }
 
     private val latestSequence = AtomicInteger(0)
+    private val isBusy = AtomicBoolean(false)
 
-    @Volatile
-    private var activeFuture: Future<*>? = null
+    @Volatile private var activeFuture: Future<*>? = null
+    @Volatile private var cachedModel: ContextLmModel? = null
+    @Volatile private var cachedModelPath: String? = null
+    @Volatile private var cachedPersonalWords: Map<String, String> = emptyMap()
+    @Volatile private var lastPersonalDictLoadMs: Long = 0L
 
-    @Volatile
-    private var cachedModel: ContextLmModel? = null
-
-    @Volatile
-    private var cachedModelPath: String? = null
+    // Reuse sentence context across letters within the same word to avoid repeated IPC binder calls
+    @Volatile private var cachedSentenceNgramKey: String = ""
+    @Volatile private var cachedSentenceText: String = ""
 
     fun isEnabledAndReady(context: Context): Boolean {
         if (!ContextLmPreferences.isEnabled(context)) return false
@@ -51,6 +54,9 @@ object ContextLmFacilitator {
     }
 
     fun invalidateModel() {
+        lastPersonalDictLoadMs = 0L
+        cachedSentenceNgramKey = ""
+        cachedSentenceText = ""
         lmExecutor.execute {
             cachedModel?.close()
             cachedModel = null
@@ -58,11 +64,6 @@ object ContextLmFacilitator {
         }
     }
 
-    /**
-     * Cancels any stale in-flight inference when a new keystroke arrives and runs
-     * contextual Transformer prediction within the <40ms budget.
-     * Returns null on timeout, cancellation, or if no model is loaded (caller uses LatinIME).
-     */
     fun getContextualSuggestions(
         context: Context,
         wordComposer: WordComposer,
@@ -70,6 +71,8 @@ object ContextLmFacilitator {
         keyboard: Keyboard,
         sequenceNumber: Int,
         autocorrectThreshold: Float,
+        textBeforeCursorProvider: (() -> String?)? = null,
+        dictionaryFacilitator: DictionaryFacilitator? = null,
         bannedWords: Array<String> = emptyArray()
     ): List<SuggestedWordInfo>? {
         if (!isEnabledAndReady(context)) return null
@@ -80,7 +83,22 @@ object ContextLmFacilitator {
 
         val composedData: ComposedData = wordComposer.getComposedDataSnapshot()
         val partialWord = composedData.mTypedWord ?: ""
-        val prevContext = extractPrecedingContext(ngramContext, partialWord)
+        val ngramKey = ngramContext.extractPrevWordsContext()
+        val rawBefore = if (ngramKey == cachedSentenceNgramKey && cachedSentenceText.isNotEmpty()) {
+            cachedSentenceText
+        } else {
+            val fetched = textBeforeCursorProvider?.invoke()
+            if (!fetched.isNullOrBlank()) {
+                cachedSentenceNgramKey = ngramKey
+                cachedSentenceText = fetched
+            }
+            fetched
+        }
+
+        val prevContext = extractPrecedingContext(ngramContext, rawBefore, partialWord)
+        val isSentenceStart = prevContext.isEmpty() ||
+            prevContext.endsWith(".") || prevContext.endsWith("!") ||
+            prevContext.endsWith("?") || prevContext.endsWith("\n")
 
         val xCoords = composedData.mInputPointers.xCoordinates.take(partialWord.length).toIntArray()
         val yCoords = composedData.mInputPointers.yCoordinates.take(partialWord.length).toIntArray()
@@ -96,59 +114,80 @@ object ContextLmFacilitator {
             keyYs[i] = key.y + key.height / 2
         }
 
+        val personalMap = getPersonalDictionaryMap(context)
+        val wasBusy = isBusy.get()
+
         val task = Callable<List<SuggestedWordInfo>?> {
             if (latestSequence.get() != sequenceNumber) return@Callable null
+            isBusy.set(true)
+            try {
+                val model = getOrLoadModel(modelPath) ?: return@Callable null
+                val result = model.getSuggestions(
+                    context = prevContext,
+                    partialWord = partialWord,
+                    composeX = xCoords,
+                    composeY = yCoords,
+                    keyboardWidth = keyboard.mOccupiedWidth,
+                    keyboardHeight = keyboard.mOccupiedHeight,
+                    commonKeyWidth = keyboard.mMostCommonKeyWidth,
+                    keyCodes = keyCodes,
+                    keyCenterXs = keyXs,
+                    keyCenterYs = keyYs,
+                    autocorrectThreshold = autocorrectThreshold,
+                    bannedWords = bannedWords,
+                    maxResults = 8
+                ) ?: return@Callable null
 
-            val model = getOrLoadModel(modelPath) ?: return@Callable null
-            val result = model.getSuggestions(
-                context = prevContext,
-                partialWord = partialWord,
-                composeX = xCoords,
-                composeY = yCoords,
-                keyboardWidth = keyboard.mOccupiedWidth,
-                keyboardHeight = keyboard.mOccupiedHeight,
-                commonKeyWidth = keyboard.mMostCommonKeyWidth,
-                keyCodes = keyCodes,
-                keyCenterXs = keyXs,
-                keyCenterYs = keyYs,
-                autocorrectThreshold = autocorrectThreshold,
-                bannedWords = bannedWords
-            ) ?: return@Callable null
+                if (latestSequence.get() != sequenceNumber) return@Callable null
 
-            if (latestSequence.get() != sequenceNumber) return@Callable null
+                val out = ArrayList<SuggestedWordInfo>(result.words.size)
+                for (i in result.words.indices) {
+                    var word = result.words[i]
+                    var prob = result.probabilities[i].coerceIn(0f, 1.5f)
+                    val lower = word.lowercase(Locale.ROOT)
 
-            val out = ArrayList<SuggestedWordInfo>(result.words.size)
-            for (i in result.words.indices) {
-                val word = result.words[i]
-                val prob = result.probabilities[i].coerceIn(0f, 1f)
-                val score = (BASE_NEURAL_SCORE * prob).toInt().coerceAtLeast(1)
-                val kind = if (partialWord.isEmpty()) {
-                    SuggestedWordInfo.KIND_PREDICTION
-                } else if (i == 0 && result.mode == ContextLmModel.RETURN_AUTOCORRECT) {
-                    SuggestedWordInfo.KIND_CORRECTION or SuggestedWordInfo.KIND_FLAG_APPROPRIATE_FOR_AUTO_CORRECTION
-                } else {
-                    SuggestedWordInfo.KIND_CORRECTION
-                }
+                    val personalCased = personalMap[lower]
+                    if (personalCased != null) {
+                        word = personalCased
+                        prob *= 1.30f
+                    } else if (!isSentenceStart && dictionaryFacilitator != null) {
+                        word = DictionaryHygieneGuard.normalizeForHistory(word) { candidateLower ->
+                            dictionaryFacilitator.isValidSuggestionWord(candidateLower)
+                        }
+                    }
 
-                out.add(
-                    SuggestedWordInfo(
-                        word,
-                        ngramContext.extractPrevWordsContext(),
-                        score,
-                        kind,
-                        Dictionary.DICTIONARY_USER_TYPED, // non-null placeholder source dict
-                        SuggestedWordInfo.NOT_AN_INDEX,
-                        SuggestedWordInfo.NOT_A_CONFIDENCE
+                    val score = (BASE_NEURAL_SCORE * prob.coerceIn(0f, 1.5f)).toInt().coerceAtLeast(1)
+                    val kind = if (partialWord.isEmpty()) {
+                        SuggestedWordInfo.KIND_PREDICTION
+                    } else if (i == 0 && result.mode == ContextLmModel.RETURN_AUTOCORRECT) {
+                        SuggestedWordInfo.KIND_CORRECTION or SuggestedWordInfo.KIND_FLAG_APPROPRIATE_FOR_AUTO_CORRECTION
+                    } else {
+                        SuggestedWordInfo.KIND_CORRECTION
+                    }
+
+                    out.add(
+                        SuggestedWordInfo(
+                            word,
+                            ngramKey,
+                            score,
+                            kind,
+                            Dictionary.DICTIONARY_USER_TYPED,
+                            SuggestedWordInfo.NOT_AN_INDEX,
+                            SuggestedWordInfo.NOT_A_CONFIDENCE
+                        )
                     )
-                )
+                }
+                out
+            } finally {
+                isBusy.set(false)
             }
-            out
         }
 
         val future = lmExecutor.submit(task)
         activeFuture = future
+        val budgetMs = if (wasBusy) BUSY_INFERENCE_TIMEOUT_MS else INFERENCE_TIMEOUT_MS
         return try {
-            future.get(INFERENCE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            future.get(budgetMs, TimeUnit.MILLISECONDS)
         } catch (_: TimeoutException) {
             future.cancel(false)
             null
@@ -158,38 +197,54 @@ object ContextLmFacilitator {
         }
     }
 
-    /**
-     * Merges neural contextual candidates with LatinIME's dictionary suggestions,
-     * preserving the typed word at index 0 when present and deduplicating case-insensitively.
-     */
     fun mergeSuggestions(
         baseSuggestions: SuggestedWords,
-        neuralCandidates: List<SuggestedWordInfo>?
+        neuralCandidates: List<SuggestedWordInfo>?,
+        isCorrectionEnabled: Boolean = true
     ): SuggestedWords {
         if (neuralCandidates.isNullOrEmpty()) return baseSuggestions
 
-        val merged = ArrayList<SuggestedWordInfo>(baseSuggestions.size() + neuralCandidates.size)
+        val topNeural = neuralCandidates[0]
+        val neuralWantsAutoCorrect = isCorrectionEnabled &&
+            (topNeural.kind and SuggestedWordInfo.KIND_FLAG_APPROPRIATE_FOR_AUTO_CORRECTION) != 0 &&
+            baseSuggestions.mTypedWordInfo != null &&
+            !topNeural.mWord.equals(baseSuggestions.mTypedWordInfo.mWord, ignoreCase = true)
+
+        val willAutoCorrect = baseSuggestions.mWillAutoCorrect || neuralWantsAutoCorrect
+        val merged = ArrayList<SuggestedWordInfo>(baseSuggestions.size() + neuralCandidates.size + 2)
         val seen = HashSet<String>()
 
-        // Preserve typed word slot if baseSuggestions has one
-        val startIndex = if (baseSuggestions.mWillAutoCorrect || baseSuggestions.size() == 0) 0 else 1
-        if (startIndex == 1 && baseSuggestions.size() > 0) {
-            val typed = baseSuggestions.getInfo(0)
-            merged.add(typed)
-            seen.add(typed.mWord.lowercase())
-        }
+        val typedInfo = baseSuggestions.mTypedWordInfo
+        val hasTypedWord = typedInfo != null && typedInfo.mWord.isNotEmpty()
+        val typedLower = if (hasTypedWord) typedInfo!!.mWord.lowercase(Locale.ROOT) else ""
 
+        val ranked = ArrayList<SuggestedWordInfo>(baseSuggestions.size() + neuralCandidates.size)
         for (candidate in neuralCandidates) {
-            if (seen.add(candidate.mWord.lowercase())) {
-                merged.add(candidate)
+            val l = candidate.mWord.lowercase(Locale.ROOT)
+            if (l != typedLower && seen.add(l)) {
+                ranked.add(candidate)
+            }
+        }
+        for (i in 0 until baseSuggestions.size()) {
+            val info = baseSuggestions.getInfo(i)
+            val l = info.mWord.lowercase(Locale.ROOT)
+            if (l != typedLower && seen.add(l)) {
+                ranked.add(info)
             }
         }
 
-        for (i in startIndex until baseSuggestions.size()) {
-            val info = baseSuggestions.getInfo(i)
-            if (seen.add(info.mWord.lowercase())) {
-                merged.add(info)
-            }
+        // Match SuggestedWords indices:
+        // INDEX_OF_TYPED_WORD = 0, INDEX_OF_AUTO_CORRECTION = 1, INDEX_OF_TYPED_WORD_WHEN_AUTOCORRECT = 2
+        if (!hasTypedWord) {
+            merged.addAll(ranked)
+        } else if (willAutoCorrect) {
+            merged.add(typedInfo!!)
+            if (ranked.isNotEmpty()) merged.add(ranked[0])
+            merged.add(typedInfo)
+            for (i in 1 until ranked.size) merged.add(ranked[i])
+        } else {
+            merged.add(typedInfo!!)
+            merged.addAll(ranked)
         }
 
         return SuggestedWords(
@@ -197,11 +252,43 @@ object ContextLmFacilitator {
             baseSuggestions.mRawSuggestions,
             baseSuggestions.mTypedWordInfo,
             baseSuggestions.mTypedWordValid,
-            baseSuggestions.mWillAutoCorrect,
+            willAutoCorrect,
             baseSuggestions.mIsObsoleteSuggestions,
             baseSuggestions.mInputStyle,
             baseSuggestions.mSequenceNumber
         )
+    }
+
+    private fun getPersonalDictionaryMap(context: Context): Map<String, String> {
+        val now = System.currentTimeMillis()
+        if (now - lastPersonalDictLoadMs < PERSONAL_DICT_REFRESH_MS && cachedPersonalWords.isNotEmpty()) {
+            return cachedPersonalWords
+        }
+        lastPersonalDictLoadMs = now
+        return try {
+            val map = HashMap<String, String>()
+            context.contentResolver.query(
+                UserDictionary.Words.CONTENT_URI,
+                arrayOf(UserDictionary.Words.WORD),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idx = cursor.getColumnIndex(UserDictionary.Words.WORD)
+                if (idx >= 0) {
+                    while (cursor.moveToNext()) {
+                        val w = cursor.getString(idx)?.trim()
+                        if (!w.isNullOrEmpty() && !w.contains(' ')) {
+                            map[w.lowercase(Locale.ROOT)] = w
+                        }
+                    }
+                }
+            }
+            cachedPersonalWords = map
+            map
+        } catch (_: Throwable) {
+            cachedPersonalWords
+        }
     }
 
     private fun getOrLoadModel(path: String): ContextLmModel? {
@@ -214,14 +301,30 @@ object ContextLmFacilitator {
         return cachedModel
     }
 
-    private fun extractPrecedingContext(ngramContext: NgramContext, partialWord: String): String {
-        val raw = ngramContext.extractPrevWordsContext()
-            .replace(NgramContext.BEGINNING_OF_SENTENCE_TAG, " ")
-            .trim()
-        return if (partialWord.isNotEmpty() && raw.endsWith(partialWord)) {
-            raw.removeSuffix(partialWord).trimEnd()
+    private fun extractPrecedingContext(
+        ngramContext: NgramContext,
+        textBeforeCursor: String?,
+        partialWord: String
+    ): String {
+        val source = if (!textBeforeCursor.isNullOrBlank()) {
+            val stripped = if (partialWord.isNotEmpty() && textBeforeCursor.endsWith(partialWord)) {
+                textBeforeCursor.removeSuffix(partialWord)
+            } else {
+                textBeforeCursor
+            }
+            val tail = if (stripped.length > 240) stripped.takeLast(240) else stripped
+            val lastNewline = tail.lastIndexOf('\n')
+            if (lastNewline >= 0) tail.substring(lastNewline + 1).trim() else tail.trim()
         } else {
-            raw
+            ngramContext.extractPrevWordsContext()
+                .replace(NgramContext.BEGINNING_OF_SENTENCE_TAG, " ")
+                .trim()
+        }
+
+        return if (partialWord.isNotEmpty() && source.endsWith(partialWord)) {
+            source.removeSuffix(partialWord).trimEnd()
+        } else {
+            source
         }
     }
 }

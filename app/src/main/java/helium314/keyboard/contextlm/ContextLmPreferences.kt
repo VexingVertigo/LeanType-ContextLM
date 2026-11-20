@@ -43,8 +43,17 @@ object ContextLmPreferences {
         if (!enabled) ContextLmFacilitator.invalidateModel()
     }
 
-    fun getModelPath(context: Context): String? =
-        context.prefs().getString(PREF_CONTEXT_LM_MODEL_PATH, null)
+    fun getModelPath(context: Context): String? {
+        val saved = context.prefs().getString(PREF_CONTEXT_LM_MODEL_PATH, null) ?: return null
+        val savedFile = File(saved)
+        if (savedFile.canRead()) return saved
+        val localFallback = File(File(context.filesDir, MODEL_DIR_NAME), savedFile.name)
+        if (localFallback.canRead()) {
+            setModelPath(context, localFallback.absolutePath)
+            return localFallback.absolutePath
+        }
+        return saved
+    }
 
     fun setModelPath(context: Context, path: String?) {
         context.prefs().edit().putString(PREF_CONTEXT_LM_MODEL_PATH, path).apply()

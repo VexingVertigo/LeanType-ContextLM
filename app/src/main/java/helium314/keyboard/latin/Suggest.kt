@@ -227,8 +227,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         val isTypedWordValid = firstOccurrenceOfTypedWordInSuggestions > -1 || (!resultsArePredictions && !allowsToBeAutoCorrected)
         val baseSuggestions = SuggestedWords(suggestionsList, suggestionResults.mRawSuggestions,
             typedWordInfo, isTypedWordValid, hasAutoCorrection, false, inputStyle, sequenceNumber)
-        val neural = if (ime != null) helium314.keyboard.contextlm.ContextLmFacilitator.getContextualSuggestions(ime, wordComposer, ngramContext, keyboard, sequenceNumber, mAutoCorrectionThreshold) else null
-        return helium314.keyboard.contextlm.ContextLmFacilitator.mergeSuggestions(baseSuggestions, neural)
+        val neural = if (ime != null) helium314.keyboard.contextlm.ContextLmFacilitator.getContextualSuggestions(ime, wordComposer, ngramContext, keyboard, sequenceNumber, mAutoCorrectionThreshold, { ime.inputLogic.connection.getTextBeforeCursor(512, 0)?.toString() }, mDictionaryFacilitator) else null
+        return helium314.keyboard.contextlm.ContextLmFacilitator.mergeSuggestions(baseSuggestions, neural, isCorrectionEnabled)
     }
 
     // returns [allowsToBeAutoCorrected, hasAutoCorrection]
@@ -362,7 +362,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             }
 
             if (!AutoCorrectionUtils.suggestionExceedsThreshold(firstSuggestion, consideredWord, mAutoCorrectionThreshold)) {
-                // Score is too low for autocorrect — but for long words, the normalized score
+                // Score is too low for autocorrect Ã¢â‚¬â€ but for long words, the normalized score
                 // formula penalizes proportionally (weight = 1 - editDist/len), so a single typo
                 // in a 12-char word gets unfairly suppressed. Use a relaxed threshold for long words.
                 // ponytail: relax limits for misspelled words (not in dictionary) to match Gboard-like behaviour
@@ -377,7 +377,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                     if (normalizedScore < adjustedThreshold) {
                         return true to false
                     }
-                    // Falls through with adjusted threshold — allow autocorrection
+                    // Falls through with adjusted threshold Ã¢â‚¬â€ allow autocorrection
                 } else {
                     return true to false
                 }
@@ -416,7 +416,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                             + getLongWordCorrectionBonus(typedWordString, firstSuggestion)) // boost corrections for long words with proportionally small edit distance
                 val firstScoreForEmpty = firstAndTypedEmptyInfos.first?.mScore ?: 0
                 val typedScoreForEmpty = firstAndTypedEmptyInfos.second?.mScore ?: 0
-                // For long words, a single typo is proportionally less significant —
+                // For long words, a single typo is proportionally less significant Ã¢â‚¬â€
                 // reduce the margin needed for the correction to win over the typed word
                 val contextMargin = if (typedWordString.length > 6)
                     (20 * 6 / typedWordString.length) else 20
@@ -441,7 +441,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         if (typed.length <= 6) return 0
         if (suggestion.isKindOf(SuggestedWordInfo.KIND_CORRECTION)
             || suggestion.isKindOf(SuggestedWordInfo.KIND_WHITELIST)) {
-            // Bonus scales with length: 7 chars → 2, 8 → 4, ... 16+ → 20
+            // Bonus scales with length: 7 chars Ã¢â€ â€™ 2, 8 Ã¢â€ â€™ 4, ... 16+ Ã¢â€ â€™ 20
             return (typed.length - 6).coerceAtMost(10) * 2
         }
         return 0

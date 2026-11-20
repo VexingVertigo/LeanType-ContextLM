@@ -1,0 +1,4 @@
+- Added on-device Contextual Transformer prediction and autocorrect (FUTO GGUF models via SAF).
+- Added Personal Dictionary Hygiene Guard and 1-tap AI Personal Dictionary Cleaner.
+- Prioritized high-confidence neural corrections in the center autocorrect slot with Spacebar commit.
+- Improved fast-typing inference concurrency, cursor context caching, and local GGUF path recovery.

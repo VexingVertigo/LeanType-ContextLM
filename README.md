@@ -26,7 +26,7 @@
 
 ## 🚀 Overview
 
-**LeanType** combines the trusted, lightweight, privacy-focused foundation of HeliBoard with modern productivity features: Multi-Provider Cloud, Self-Hosted & Offline AI proofreading, On-Device Whisper Voice Typing, Handwriting Recognition, In-Keyboard Offline Camera & Screenshot OCR, GIF Search & Media Picker, CJK (Chinese, Japanese & Korean) Engine, Hexagonal Honeycomb Layouts, Real-time Inline Math Calculations, Zero-Latency Custom Sound Packs, Live System Wallpaper Blur, Auto Floating in Landscape, Smart Toolbar Auto-Spanning, Built-in Self-Updater, and Rich Text Tools, while keeping you in complete control over your data.
+**LeanType** combines the trusted, lightweight, privacy-focused foundation of HeliBoard with modern productivity features: Multi-Provider Cloud, Self-Hosted & Offline AI proofreading, On-Device Contextual Transformer Autocorrect & Next-Word Prediction (FUTO GGUF), AI Personal Dictionary Cleaner, On-Device Whisper Voice Typing, Handwriting Recognition, In-Keyboard Offline Camera & Screenshot OCR, GIF Search & Media Picker, CJK (Chinese, Japanese & Korean) Engine, Hexagonal Honeycomb Layouts, Real-time Inline Math Calculations, Zero-Latency Custom Sound Packs, Live System Wallpaper Blur, Auto Floating in Landscape, Smart Toolbar Auto-Spanning, Built-in Self-Updater, and Rich Text Tools, while keeping you in complete control over your data.
 
 ---
 
@@ -57,6 +57,7 @@ LeanType is available in two purpose-built flavors designed to match your exact 
 | **Target Audience** | **Recommended** (F-Droid & Direct users) | Privacy purists & Air-gapped devices |
 | **Cloud AI** *(Gemini, Groq, OpenAI)* | ✅ Yes | ❌ No |
 | **Offline AI** *(Local GGUF via llama.cpp)* | ❌ No | ✅ **Yes** *(Android 8.0+ via plugin)* |
+| **Contextual Transformer LM** *(FUTO GGUF)* | ✅ **Yes** *(On-device via SAF)* | ✅ **Yes** *(On-device via SAF)* |
 | **Translation** *(Offline & AI)* | ✅ **Yes** *(Plugin or AI)* | ✅ **Yes** *(via Plugin)* |
 | **Voice Typing** *(On-device Whisper)* | ✅ **Yes** *(via plugin)* | ✅ **Yes** *(via plugin)* |
 | **Handwriting Input** | ✅ **Yes** *(via plugin)* | ✅ **Yes** *(via plugin)* |
@@ -79,6 +80,8 @@ LeanType is available in two purpose-built flavors designed to match your exact 
 - **Multi-Provider Cloud & Self-Hosted AI**: Integrated proofreading, grammar correction, and text rewriting powered by **Google Gemini**, **Groq** (Llama 3.3, Mixtral, DeepSeek), **OpenAI**, or any **Self-Hosted local LLM server** (Ollama, LM Studio, LocalAI, vLLM, or custom OpenAI-compatible endpoints).
 - **Dynamic Model Fetching**: Automatically fetches and populates the latest available model IDs directly from your cloud or self-hosted provider.
 - **🛡️ Offline Neural Proofreading (GGUF)**: Run compact, quantized GGUF language models directly on your device via embedded `llama.cpp` (100% private, zero network access in `offline` flavor).
+- **🔮 Contextual Transformer Autocorrect & Prediction (FUTO GGUF)**: Sentence-aware next-word prediction and spatial key-coordinate autocorrection powered by embedded `libcontextlm.so` (`llama.cpp` + SentencePiece), importing external quantized FUTO `.gguf` models (e.g. `ml4_q6_k.gguf`) via SAF with zero network access.
+- **🧹 Personal Dictionary Hygiene & AI Cleaner**: Guards learned typing history against out-of-vocabulary neural hallucinations and adds a 1-tap **AI Personal Dictionary Cleaner** (**Settings → Dictionaries → Personal Dictionary**) to audit and remove accidental typos.
 - **🌐 Multi-Mode In-Keyboard Translation**: Translate text directly into any language without switching apps. Choose between **Offline Translation Plugin** (supported across all flavors), **Built-in Offline Translation (ML Kit)**, or your configured **Cloud / Self-Hosted AI Provider** (Gemini, Groq, OpenAI, Ollama) with seamless fallback.
 - **🧠 Custom AI Keys & Capsules**: Assign custom prompts, personas (`#editor`, `#proofread`), and themed tag capsules to 10 customizable toolbar keys.
 
@@ -218,6 +221,11 @@ LeanType is available in two purpose-built flavors designed to match your exact 
 2. In **Settings → Plugins → CJK Settings**, enable the CJK Engine (or install the companion plugin if prompted).
 3. Select your input style (e.g. Pinyin for Chinese, Flick/Romaji for Japanese, 2-Set Hangul for Korean) and type with the live candidate strip.
 
+### 6. Contextual Transformer Prediction (FUTO GGUF)
+1. Obtain a compatible quantized FUTO contextual language model in `.gguf` format (such as `ml4_q6_k.gguf`).
+2. Open **Settings → AI Integration → Contextual Transformer Prediction**.
+3. Tap **Transformer GGUF Model** and select your `.gguf` file via the Android file picker (copied into app-private storage for zero-latency memory mapping).
+4. Toggle **Contextual Transformer Prediction** on — neural next-word predictions and context-aware autocorrections will immediately appear in the suggestion strip and commit on Spacebar across all apps (100% offline).
 ---
 
 ## 🧩 Ecosystem & Plugins

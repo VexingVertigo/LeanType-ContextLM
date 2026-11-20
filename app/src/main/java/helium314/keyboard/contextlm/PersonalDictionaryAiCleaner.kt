@@ -15,18 +15,27 @@ import kotlinx.serialization.Serializable
 import java.util.Locale
 
 object PersonalDictionaryAiCleaner {
-    private const val BATCH_SIZE = 12
+    private const val BATCH_SIZE = 10
     private val mutex = Mutex()
 
-    enum class CleanAction { DELETE, LOWERCASE }
+    enum class CleanAction { DELETE, LOWERCASE, CAPITALIZE }
     data class DictEntry(val id: Long, val word: String, val shortcut: String?, val frequency: Int, val locale: String?)
-    @Serializable private data class AiAuditItem(val word: String, val action: String, val reason: String = "")
+    @Serializable private data class AiAuditItem(val word: String, val action: String, val newWord: String? = null, val reason: String = "")
     data class CleanupProposal(val entry: DictEntry, val action: CleanAction, val newWord: String?, val reason: String)
-    
+
     sealed class AuditResult {
         data class Ready(val proposals: List<CleanupProposal>) : AuditResult()
         data class Error(val message: String) : AuditResult()
     }
+
+    private val COMMON_CAPITALIZED_ACCIDENTS = setOf(
+        "the", "and", "but", "for", "nor", "or", "yet", "so", "in", "on", "at", "to", "from", "by",
+        "with", "about", "against", "between", "into", "through", "during", "before", "after", "above",
+        "below", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why",
+        "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "only",
+        "own", "same", "than", "too", "very", "just", "now", "also", "because", "if", "while", "this",
+        "that", "these", "those", "what", "which", "who", "whom", "whose", "applicable", "running", "going"
+    )
 
     fun readUserDictionaryEntries(context: Context, localeFilter: Locale?): List<DictEntry> {
         val resolver = context.contentResolver
@@ -46,53 +55,64 @@ object PersonalDictionaryAiCleaner {
         return entries
     }
 
-    suspend fun auditDictionary(context: Context, localeFilter: Locale?): AuditResult = mutex.withLock {
+    suspend fun auditDictionary(context: Context, localeFilter: Locale?, onProgress: ((Int, Int) -> Unit)? = null): AuditResult = mutex.withLock {
         withContext(Dispatchers.IO) {
             try {
-                withTimeout(45000) {
+                withTimeout(60000) {
                     if (!OfflineAiLoader.hasPlugin(context)) return@withTimeout AuditResult.Error("Offline AI plugin is not loaded.")
                     val provider = OfflineAiLoader.getProvider(context) ?: return@withTimeout AuditResult.Error("Unable to initialize Offline AI provider.")
                     if (!provider.isAvailable()) return@withTimeout AuditResult.Error("Offline AI provider is unavailable.")
-                    
+
                     if (!provider.isModelLoaded()) {
                         val p = ProofreadService(context).getModelPath()
                         if (p.isNullOrBlank() || !provider.loadModel(context, p, 4, 4096)) return@withTimeout AuditResult.Error("Failed to load model in AI plugin.")
                     }
 
-                    val entries = readUserDictionaryEntries(context, localeFilter)
+                    val entries = readUserDictionaryEntries(context, localeFilter).filter { !it.word.contains("@") && !it.word.contains("'") && !it.word.contains("-") }
                     if (entries.isEmpty()) return@withTimeout AuditResult.Ready(emptyList())
 
                     val proposals = ArrayList<CleanupProposal>()
                     val entryByWord = entries.associateBy { it.word }
 
-                    for (chunk in entries.chunked(BATCH_SIZE)) {
+                    val chunks = entries.chunked(BATCH_SIZE); chunks.forEachIndexed { idx, chunk -> onProgress?.invoke(idx + 1, chunks.size);
                         val wordsStr = chunk.joinToString(", ") { it.word }
-                        val prompt = "Instruction: Fix typos (delete) and lowercase capitalized words. Do NOT touch acronyms (DNS, API) or proper nouns (Google, John). Format: action: word.\n\nInput: teh, The, Google, DNS, Applicable\nOutput:\ndelete: teh\nlowercase: Applicable\n\nInput: $wordsStr\nOutput:\n"
-                        
+                        val prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou clean a user's personal keyboard dictionary. Rules:\n1. NEVER delete or lowercase human names (Edelman, Darin, Karin, Joshua), brands/apps (Samsung, YouTube, PS5, FUTO, Portainer), places (Texas, Olympia), or technical terms/acronyms (DNS, WiFi, OLED).\n2. If a human name, place, brand, or acronym is lowercase (e.g. karin, texas, samsung, youtube, dns, ps5), output 'capitalize: word -> ProperForm'.\n3. Only 'delete' obvious keyboard typos/gibberish (e.g. teh, hte, adn, theres) or common function words (any, there).\n4. Only 'lowercase' common non-proper English words accidentally capitalized at sentence start (e.g. The, Applicable, Running).\nOutput ONLY lines in format 'action: word' or 'capitalize: word -> Fixed'.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nteh, The, Edelman, Darin, karin, samsung, youtube, texas, dns, ps5, Applicable, oled<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\ndelete: teh\nlowercase: The\ncapitalize: karin -> Karin\ncapitalize: samsung -> Samsung\ncapitalize: youtube -> YouTube\ncapitalize: texas -> Texas\ncapitalize: dns -> DNS\ncapitalize: ps5 -> PS5\nlowercase: Applicable<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n$wordsStr<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+
                         OfflineAiLoader.isBusy = true
                         val rawResponse = try {
-                            provider.generate(prompt = prompt, params = mapOf("temperature" to 0.0, "max_tokens" to 100))
+                            provider.generate(prompt = prompt, params = mapOf("temperature" to 0.0, "max_tokens" to 180))
                         } catch (e: Exception) {
                             android.util.Log.e("DictCleaner", "Generate failed", e)
                             ""
                         } finally {
                             OfflineAiLoader.isBusy = false
                         }
-                        
-                        android.util.Log.i("DictCleaner", "batch=${chunk.size} rawLen=${rawResponse.length} raw=${rawResponse.take(200)}")
-                        
+
                         for (item in parseJsonItems(rawResponse)) {
                             val entry = entryByWord[item.word] ?: continue
+                            val lowerCheck = entry.word.lowercase(Locale.ROOT)
+                            val looksLikeProperName = entry.word.length >= 3 && entry.word[0].isUpperCase() && lowerCheck !in COMMON_CAPITALIZED_ACCIDENTS
                             when (item.action.lowercase(Locale.ROOT).trim()) {
-                                "delete" -> proposals.add(CleanupProposal(entry, CleanAction.DELETE, null, item.reason))
+                                "delete" -> {
+                                    if (!looksLikeProperName && !entry.word.contains("@")) {
+                                        proposals.add(CleanupProposal(entry, CleanAction.DELETE, null, item.reason))
+                                    }
+                                }
                                 "lowercase" -> {
-                                    val lower = entry.word.lowercase(Locale.ROOT)
-                                    if (lower != entry.word) proposals.add(CleanupProposal(entry, CleanAction.LOWERCASE, lower, item.reason))
+                                    if (!looksLikeProperName && lowerCheck != entry.word) {
+                                        proposals.add(CleanupProposal(entry, CleanAction.LOWERCASE, lowerCheck, item.reason))
+                                    }
+                                }
+                                "capitalize" -> {
+                                    val target = item.newWord?.takeIf { it.isNotBlank() && it.equals(entry.word, ignoreCase = true) }
+                                        ?: entry.word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+                                    if (target != entry.word) {
+                                        proposals.add(CleanupProposal(entry, CleanAction.CAPITALIZE, target, item.reason))
+                                    }
                                 }
                             }
                         }
                     }
-                    android.util.Log.i("DictCleaner", "Returning ${proposals.size} proposals")
                     AuditResult.Ready(proposals)
                 }
             } catch (e: Exception) {
@@ -110,9 +130,9 @@ object PersonalDictionaryAiCleaner {
             val args = arrayOf(proposal.entry.id.toString())
             when (proposal.action) {
                 CleanAction.DELETE -> applied += resolver.delete(UserDictionary.Words.CONTENT_URI, where, args)
-                CleanAction.LOWERCASE -> {
-                    val lower = proposal.newWord ?: continue
-                    val values = ContentValues().apply { put(UserDictionary.Words.WORD, lower) }
+                CleanAction.LOWERCASE, CleanAction.CAPITALIZE -> {
+                    val updated = proposal.newWord ?: continue
+                    val values = ContentValues().apply { put(UserDictionary.Words.WORD, updated) }
                     applied += resolver.update(UserDictionary.Words.CONTENT_URI, values, where, args)
                 }
             }
@@ -126,11 +146,16 @@ object PersonalDictionaryAiCleaner {
             val parts = line.split(":", limit = 2)
             if (parts.size == 2) {
                 val action = parts[0].trim().lowercase()
-                val words = parts[1].trim().removeSurrounding("\"").split(",")
-                if (action == "delete" || action == "lowercase") {
-                    words.forEach { w ->
+                val rhs = parts[1].trim().removeSurrounding("\"")
+                if (action == "capitalize" && rhs.contains("->")) {
+                    val arrowParts = rhs.split("->", limit = 2)
+                    val w = arrowParts[0].trim()
+                    val fixed = arrowParts[1].trim()
+                    if (w.isNotBlank() && fixed.isNotBlank()) list.add(AiAuditItem(w, action, fixed, ""))
+                } else if (action == "delete" || action == "lowercase" || action == "capitalize") {
+                    rhs.split(",").forEach { w ->
                         val word = w.trim()
-                        if (word.isNotBlank()) list.add(AiAuditItem(word, action, ""))
+                        if (word.isNotBlank()) list.add(AiAuditItem(word, action, null, ""))
                     }
                 }
             }

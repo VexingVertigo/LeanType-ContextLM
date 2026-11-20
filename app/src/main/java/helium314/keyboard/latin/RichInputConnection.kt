@@ -1,4 +1,4 @@
-package helium314.keyboard.latin
+﻿package helium314.keyboard.latin
 
 import android.content.ClipData
 import android.content.ClipboardManager

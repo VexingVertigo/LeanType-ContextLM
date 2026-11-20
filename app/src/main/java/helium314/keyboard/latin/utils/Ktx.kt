@@ -120,7 +120,8 @@ fun Context.getDisplayContext(): Context {
 
 /** Override layout parameters to expand SoftInputWindow to the entire screen, See setInputView and SoftInputWindow.updateWidthHeight */
 fun InputMethodService.updateSoftInputWindowLayoutParameters(inputView: View?) {
-    val window = window.window ?: return
+    val window = window?.window ?: return
+    if (!window.decorView.isAttachedToWindow) return
     ViewLayoutUtils.updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT)
 
     if (inputView == null) return

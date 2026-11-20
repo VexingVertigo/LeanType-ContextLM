@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+﻿// SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.settings.screens
 
 import android.content.ContentResolver
@@ -23,6 +23,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -76,7 +81,7 @@ fun PersonalDictionaryScreen(
     var showSortDialog by remember { mutableStateOf(false) }
     var showAiCleanDialog by remember { mutableStateOf(false) }
     var aiCleanProposals by remember { mutableStateOf<List<helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanupProposal>>(emptyList()) }
-    var aiCleanError by remember { mutableStateOf<String?>(null) }
+    var aiCleanError by remember { mutableStateOf<String?>(null) }; var isAiCleaning by remember { mutableStateOf(false) }; var aiCleanProgressText by remember { mutableStateOf("") }; var aiCleanSelectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) {
@@ -116,7 +121,7 @@ fun PersonalDictionaryScreen(
                     exportLauncher.launch("dictionary_$tag.txt")
                 },
                 stringResource(R.string.user_dict_sort_title) to { showSortDialog = true },
-                "AI Clean Dictionary" to { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch { when (val res = helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.auditDictionary(ctx, locale)) { is helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.AuditResult.Ready -> { aiCleanProposals = res.proposals; aiCleanError = null; showAiCleanDialog = true }; is helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.AuditResult.Error -> { aiCleanError = res.message; showAiCleanDialog = true } } } },
+                "AI Clean Dictionary" to { isAiCleaning = true; aiCleanProgressText = "Starting AI dictionary scan..."; showAiCleanDialog = true; android.widget.Toast.makeText(ctx, "Scanning dictionary with AI...", android.widget.Toast.LENGTH_SHORT).show(); kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch { when (val res = helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.auditDictionary(ctx, locale) { cur, total -> aiCleanProgressText = "Scanning batch $cur of $total..." }) { is helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.AuditResult.Ready -> { isAiCleaning = false; aiCleanProposals = res.proposals; aiCleanSelectedIds = res.proposals.map { it.entry.id }.toSet(); aiCleanError = null }; is helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.AuditResult.Error -> { isAiCleaning = false; aiCleanError = res.message } } } },
                 stringResource(R.string.clear_all) to { showClearAllDialog = true }
             ),
             headerContent = {
@@ -229,7 +234,7 @@ fun PersonalDictionaryScreen(
             content = { Text(stringResource(R.string.user_dict_clear_all_confirmation)) }
         )
     }
-    if (showAiCleanDialog) { ConfirmationDialog(onDismissRequest = { showAiCleanDialog = false }, onConfirmed = { showAiCleanDialog = false; val toApply = aiCleanProposals; if (toApply.isNotEmpty()) { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch { helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.applyProposals(ctx, toApply); refreshTrigger++ } } }, content = { val err = aiCleanError; if (err != null) Text(err) else if (aiCleanProposals.isEmpty()) Text("No typos or unnecessary capitalizations found.") else Column { Text("Apply ${aiCleanProposals.size} cleanup changes?"); aiCleanProposals.take(15).forEach { p -> Text(if (p.action == helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanAction.DELETE) "DELETE: ${p.entry.word} (${p.reason})" else "LOWERCASE: ${p.entry.word} -> ${p.newWord}") } } }) }
+    if (showAiCleanDialog) { ConfirmationDialog(onDismissRequest = { if (!isAiCleaning) showAiCleanDialog = false }, onConfirmed = { if (!isAiCleaning) { showAiCleanDialog = false; val toApply = aiCleanProposals.filter { aiCleanSelectedIds.contains(it.entry.id) }; if (toApply.isNotEmpty()) { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch { val count = helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.applyProposals(ctx, toApply); refreshTrigger++; android.widget.Toast.makeText(ctx, "Applied $count dictionary updates", android.widget.Toast.LENGTH_SHORT).show() } } } }, content = { val err = aiCleanError; if (isAiCleaning) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp)); Text(aiCleanProgressText.ifBlank { "Scanning dictionary..." }) } } else if (err != null) Text(err) else if (aiCleanProposals.isEmpty()) Text("No typos or capitalization issues found.") else Column(modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) { Text("Apply ${aiCleanSelectedIds.size} of ${aiCleanProposals.size} changes? (Tap to toggle)"); Spacer(Modifier.height(8.dp)); aiCleanProposals.forEach { p -> val checked = aiCleanSelectedIds.contains(p.entry.id); val label = when (p.action) { helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanAction.DELETE -> "DELETE: ${p.entry.word}"; helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanAction.LOWERCASE -> "LOWERCASE: ${p.entry.word} -> ${p.newWord}"; helium314.keyboard.contextlm.PersonalDictionaryAiCleaner.CleanAction.CAPITALIZE -> "CAPITALIZE: ${p.entry.word} -> ${p.newWord}" }; Row(modifier = Modifier.fillMaxWidth().clickable { aiCleanSelectedIds = if (checked) aiCleanSelectedIds - p.entry.id else aiCleanSelectedIds + p.entry.id }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = { isChecked -> aiCleanSelectedIds = if (isChecked) aiCleanSelectedIds + p.entry.id else aiCleanSelectedIds - p.entry.id }); Text(label, style = MaterialTheme.typography.bodyMedium) } } } }) }
 }
 
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+﻿// SPDX-License-Identifier: GPL-3.0-only
 
 package helium314.keyboard.latin
 
@@ -91,7 +91,7 @@ class ClipboardHistoryManager(
                 override fun onChange(selfChange: Boolean, uri: Uri?) {
                     super.onChange(selfChange, uri)
                     if (!latinIME.isInputViewShown) return
-                    if (latinIME.mSettings.current.mSuggestScreenshots) {
+                    if (latinIME.mSettings.current.mSuggestScreenshots || latinIME.mSettings.current.mClipboardHistoryEnabled) {
                         screenshotDebounceRunnable?.let { mainHandler.removeCallbacks(it) }
                         val runnable = Runnable {
                             if (!latinIME.isInputViewShown) return@Runnable
@@ -100,7 +100,7 @@ class ClipboardHistoryManager(
                             }
                         }
                         screenshotDebounceRunnable = runnable
-                        mainHandler.postDelayed(runnable, 300L)
+                        mainHandler.postDelayed(runnable, 400L); mainHandler.postDelayed(runnable, 1200L); mainHandler.postDelayed(runnable, 2500L)
                     }
                 }
             }
@@ -220,7 +220,7 @@ class ClipboardHistoryManager(
                                 if (latinIME.mSettings.current.mClipboardHistoryEnabled) {
                                     val cachedPath = cacheImage(contentUri)
                                     if (cachedPath != null && !deletedSet.contains(cachedPath) && !deletedSet.contains(contentUri.toString())) {
-                                        clipboardDao?.addClip(System.currentTimeMillis(), false, "[Screenshot]", cachedPath)
+                                        mainHandler.post { clipboardDao?.addClip(System.currentTimeMillis(), false, "[Screenshot]", cachedPath) }
                                     }
                                 }
 
@@ -299,7 +299,7 @@ class ClipboardHistoryManager(
         if (!currentText.isNullOrEmpty() && currentText != lastDismissedClipboard && currentText != lastPrimaryClipText) {
             dontShowCurrentSuggestion = false
         }
-        if (latinIME.mSettings.current.mSuggestScreenshots) {
+        if (latinIME.mSettings.current.mSuggestScreenshots || latinIME.mSettings.current.mClipboardHistoryEnabled) {
             registerScreenshotObserver()
             updateLatestScreenshotCache()
         } else {
@@ -463,7 +463,7 @@ class ClipboardHistoryManager(
                 return file.absolutePath
             }
             
-            if (!latinIME.mSettings.current.mCompressScreenshots) {
+            if (false && !latinIME.mSettings.current.mCompressScreenshots) {
                 resolver.openInputStream(uri)?.use { input ->
                     file.outputStream().use { output ->
                         input.copyTo(output)
@@ -781,7 +781,7 @@ class ClipboardHistoryManager(
                     val cachedPath = cacheImage(contentUri)
                     if (cachedPath != null) {
                         mainHandler.post {
-                            clipboardDao?.addClip(System.currentTimeMillis(), false, "[Screenshot]", cachedPath)
+                            mainHandler.post { clipboardDao?.addClip(System.currentTimeMillis(), false, "[Screenshot]", cachedPath) }
                         }
                     }
                 }
