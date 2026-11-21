@@ -2,7 +2,7 @@
 
 Keep LeanType fast and independent. As a community-funded, open-source project, we rely on users like you to stay alive. If LeanType saves you time every day, consider backing us on [GitHub Sponsors](https://github.com/sponsors/LeanBitLab) or [Open Collective](https://opencollective.com/leanbitlab-org) or simply share it with a friend!
 
-## 🚀 LeanType 4.3.5
+## 🚀 LeanType 4.4.0
 
 ---
 
@@ -23,7 +23,7 @@ Keep LeanType fast and independent. As a community-funded, open-source project, 
 
 | Flavor | Primary Focus | AI Engine | Plugins Setup | Internet | Release Updater | Size |
 |:---|:---|:---|:---|:---|:---|:---:|
-| **`1-LeanType_4.3.5-standard-release.apk`** | **Recommended** | Cloud AI + Local ContextLM | In-app download or File import | Optional (AI/plugins) | ✅ View Release | - |
-| **`2-LeanType_4.3.5-offline-release.apk`** | **Offline** | Local LLM Plugin (8.0+) + Local ContextLM | Browser download + File import | 🚫 Zero Internet (No Permission) | ❌ None | - |
+| **`1-LeanType_4.4.0-standard-release.apk`** | **Recommended** | Cloud AI + Local ContextLM | In-app download or File import | Optional (AI/plugins) | ✅ View Release | 43.7 MB |
+| **`2-LeanType_4.4.0-offline-release.apk`** | **Offline** | Local LLM Plugin (8.0+) + Local ContextLM | Browser download + File import | 🚫 Zero Internet (No Permission) | ❌ None | 43.7 MB |
 
 > 💡 **Plugin Compatibility**: All flavors support **On-Device Contextual Transformer LM** (`.gguf` via SAF), **Offline Voice Dictation** (Android 8.1+), **Offline Translation** (Android 6.0+), **Offline Handwriting Recognition** (Android 6.0+), **Offline OCR Text Extraction** (Android 6.0+), and **Offline AI Proofreading** (Android 8.0+, 64-bit) via modular plugins, and work 100% offline.
